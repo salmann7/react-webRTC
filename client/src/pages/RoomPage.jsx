@@ -18,6 +18,9 @@ const RoomPage = () => {
   const [ roomOwner, setRoomOwner ] = useState(() => (location.search.split('?')[1] === 'owner=true'));
   const [ fullscreen, setFullscreen ] = useState(false);
   const [ showSelf, setShowSelf ] = useState(false);
+  const [ showCamera, setShowCamera ] = useState(true);
+  const [ showAudio, setShowAudio ] = useState(true);
+  const [screenStream, setScreenStream] = useState();
 
   const handleUserJoined = useCallback(({ email, id }) => {
     console.log(`Email ${email} joined room`);
@@ -61,7 +64,11 @@ const RoomPage = () => {
     for (const track of myStream.getTracks()) {
       peer.peer.addTrack(track, myStream);
     }
-  }, [myStream]);
+    if (screenStream) {
+        const screenTrack = screenStream.getVideoTracks()[0];
+        peer.peer.addTrack(screenTrack, screenStream);
+    }
+  }, [myStream , screenStream]);
 
   const handleCallAccepted = useCallback(
     ({ from, ans }) => {
@@ -96,6 +103,20 @@ const RoomPage = () => {
     await peer.setLocalDescription(ans);
   }, []);
 
+  const handleScreenShare = async () => {
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+      });
+      setScreenStream(screenStream);
+      const videoTrack = screenStream.getVideoTracks()[0];
+      const sender = peer.peer.getSenders().find((s) => s.track.kind === "video");
+      sender.replaceTrack(videoTrack);
+    } catch (error) {
+      console.error("Error sharing screen:", error);
+    }
+  };
+
   useEffect(() => {
     peer.peer.addEventListener("track", async (ev) => {
       const remoteStream = ev.streams;
@@ -103,6 +124,35 @@ const RoomPage = () => {
       setRemoteStream(remoteStream[0]);
     });
   }, []);
+
+//   useEffect(() => {
+//     if (screenStream) {
+//       const screenVideoTrack = screenStream.getVideoTracks()[0];
+//       peer.peer.addTrack(screenVideoTrack, screenStream);
+//     }
+//   }, [screenStream]);
+
+  const toggleCamera = useCallback(() => {
+    let camera = myStream.getTracks().find(track => track.kind === 'video');
+    if(camera.enabled){
+        camera.enabled = false;
+        setShowCamera(false);
+    } else {
+        camera.enabled = true;
+        setShowCamera(true);
+    }
+  }, [myStream])
+
+  const toggleAudio = useCallback(() => {
+    let audio = myStream.getTracks().find(track => track.kind === 'audio');
+    if(audio.enabled){
+        audio.enabled = false;
+        setShowAudio(false);
+    } else {
+        audio.enabled = true;
+        setShowAudio(true);
+    }
+  }, [myStream])
 
   useEffect(() => {
     
@@ -174,8 +224,9 @@ const RoomPage = () => {
                         </div>}
                         <div className="absolute bottom-7 left-1/2 transform -translate-x-1/2 z-20 flex flex-row justify-center items-center gap-3">
                             <TbCameraSelfie onClick={() => setShowSelf((p) => !p)} className={` ${showSelf ? 'bg-gray-900':'bg-black'} text-white hover:cursor-pointer p-2 rounded-full w-9 h-9 flex-shrink-0`} /> 
-                            <img className=" bg-black hover:cursor-pointer p-2 rounded-full w-9 h-9 " src="/images/camera.png" alt="" />
-                            <img className=" bg-black hover:cursor-pointer p-2 rounded-full w-9 h-9 " src="/images/mic.png" alt="" />
+                            <img onClick={toggleCamera} className={`${showCamera ? 'bg-black':'bg-red-500'} hover:cursor-pointer p-2 rounded-full w-9 h-9`} src="/images/camera.png" alt="" />
+                            <img onClick={toggleAudio} className={`${showAudio ? 'bg-black':'bg-red-500'} hover:cursor-pointer p-2 rounded-full w-9 h-9`} src="/images/mic.png" alt="" />
+                            <button onClick={handleScreenShare} className={`${screenStream ? 'bg-black':'bg-blue-500'} hover:cursor-pointer px-4 py-2 rounded-full text-white font-semibold text-sm`}>Share Screen</button>
                             <img className=" bg-red-500 hover:cursor-pointer hover:bg-red-600 p-2 rounded-full w-9 h-9 " src="/images/phone.png" alt="" />
                         </div>
                     </div>
@@ -218,8 +269,8 @@ const RoomPage = () => {
             </div>}
             <div className="absolute bottom-7 left-1/2 transform -translate-x-1/2 z-20 flex flex-row justify-center items-center gap-3">
                 <TbCameraSelfie onClick={() => setShowSelf((p) => !p)} className={` ${showSelf ? 'bg-gray-900':'bg-black'} text-white hover:cursor-pointer p-2 rounded-full w-9 h-9`} /> 
-                <img className=" bg-black hover:cursor-pointer p-2 rounded-full w-9 h-9 " src="/images/camera.png" alt="" />
-                <img className=" bg-black hover:cursor-pointer p-2 rounded-full w-9 h-9 " src="/images/mic.png" alt="" />
+                <img onClick={toggleCamera} className={`${showCamera ? 'bg-black':'bg-red-500'} hover:cursor-pointer p-2 rounded-full w-9 h-9`} src="/images/camera.png" alt="" />
+                <img onClick={toggleAudio} className={`${showAudio ? 'bg-black':'bg-red-500'} hover:cursor-pointer p-2 rounded-full w-9 h-9`} src="/images/mic.png" alt="" />
                 <img className=" bg-red-500 hover:cursor-pointer p-2 rounded-full w-9 h-9 " src="/images/phone.png" alt="" />
             </div>
         </div>
