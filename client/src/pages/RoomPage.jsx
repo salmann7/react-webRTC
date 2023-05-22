@@ -20,6 +20,7 @@ const RoomPage = () => {
   const [ showSelf, setShowSelf ] = useState(false);
   const [ showCamera, setShowCamera ] = useState(true);
   const [ showAudio, setShowAudio ] = useState(true);
+  const [ showScreenShare, setShowScreenShare ] = useState(false);
   const [screenStream, setScreenStream] = useState();
 
   const handleUserJoined = useCallback(({ email, id }) => {
@@ -43,25 +44,9 @@ const RoomPage = () => {
     socket.emit("user:call", { to: remoteSocketId, offer });
   }, [remoteSocketId, socket]);
 
-  const handleIncommingCall = useCallback(
-    async ({ from, offer, email }) => {
-      setRemoteSocketId(from);
-      setRemoteEmail(email);
-      console.log(email)
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: true,
-      });
-      setMyStream(stream);
-      console.log(`Incoming Call`, from, offer);
-      const ans = await peer.getAnswer(offer);
-      socket.emit("call:accepted", { to: from, ans });
-    },
-    [socket]
-  );
-
   const sendStreams = useCallback(() => {
     for (const track of myStream.getTracks()) {
+        console.log(track);
       peer.peer.addTrack(track, myStream);
     }
     if (screenStream) {
@@ -69,6 +54,33 @@ const RoomPage = () => {
         peer.peer.addTrack(screenTrack, screenStream);
     }
   }, [myStream , screenStream]);
+
+  const handleAcceptCall = useCallback(() => {
+    
+    // const ans = await peer.getAnswer(offer);
+    // socket.emit("call:accepted", { to: from, ans });
+    setCall(true);
+    sendStreams();
+  },[sendStreams]);
+
+  const handleIncommingCall = useCallback(
+    async ({ from, offer, email }) => {
+      setRemoteSocketId(from);
+      setRemoteEmail(email);
+      console.log(email)
+    //   const stream = await navigator.mediaDevices.getUserMedia({
+    //     audio: true,
+    //     video: true,
+    //   });
+    //   setMyStream(stream);
+      console.log(`Incoming Call`, from, offer);
+      const ans = await peer.getAnswer(offer);
+      socket.emit("call:accepted", { to: from, ans });
+    },
+    [socket]
+  );
+
+  
 
   const handleCallAccepted = useCallback(
     ({ from, ans }) => {
@@ -109,6 +121,7 @@ const RoomPage = () => {
         video: true,
       });
       setScreenStream(screenStream);
+      setShowScreenShare(true);
       const videoTrack = screenStream.getVideoTracks()[0];
       const sender = peer.peer.getSenders().find((s) => s.track.kind === "video");
       sender.replaceTrack(videoTrack);
@@ -154,6 +167,63 @@ const RoomPage = () => {
     }
   }, [myStream])
 
+  const toggleScreenShare = async () => {
+    try {
+      if (!showScreenShare) {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+        });
+        setScreenStream(screenStream);
+        const videoTrack = screenStream.getVideoTracks()[0];
+  
+        // Find the video sender and replace its track
+        const senders = peer.peer.getSenders();
+        const videoSender = senders.find(
+          (sender) => sender.track && sender.track.kind === 'video'
+        );
+        if (videoSender) {
+          videoSender.replaceTrack(videoTrack);
+        } else {
+          // Add the video track as a new sender
+          peer.peer.addTrack(videoTrack, screenStream);
+        }
+      } else {
+        // Remove the screen track from the sender
+        const senders = peer.peer.getSenders();
+        const videoSender = senders.find(
+          (sender) => sender.track && sender.track.kind === 'video'
+        );
+        if (videoSender) {
+          videoSender.replaceTrack(null);
+        }
+        setScreenStream(null);
+  
+        // Show the camera video
+        // const cameraStream = await navigator.mediaDevices.getUserMedia({
+        //   video: true,
+        // });
+        const cameraVideoTrack = myStream.getVideoTracks()[0];
+  
+        // Find the video sender and replace its track
+        const cameraVideoSender = senders.find(
+          (sender) => sender.track && sender.track.kind === 'video'
+        );
+        if (cameraVideoSender) {
+          cameraVideoSender.replaceTrack(cameraVideoTrack);
+        } else {
+          // Add the video track as a new sender
+          peer.peer.addTrack(cameraVideoTrack, myStream);
+        }
+      }
+  
+      setShowScreenShare(!showScreenShare);
+      
+    } catch (error) {
+      console.error('Error sharing screen:', error);
+    }
+  };
+  
+
   useEffect(() => {
     
     socket.on("user:joined", handleUserJoined);
@@ -177,6 +247,7 @@ const RoomPage = () => {
     handleCallAccepted,
     handleNegoNeedIncomming,
     handleNegoNeedFinal,
+    remoteStream
   ]);
 
   useEffect(() => {
@@ -205,7 +276,7 @@ const RoomPage = () => {
                     <div className="flex flex-col bg-blue-900 px-5 py-10 rounded-lg w-full md:w-3/4 lg:w-1/2 items-center">
                         <h3 className="font-semibold text-white text-md w-full text-start">Call from {remoteEmail}</h3>
                         <h2 className="font-semibold text-green-300 text-2xl mb-2 w-full text-start">Incomming Call!</h2>
-                        <button onClick={handleCallUser} className="bg-green-400 w-full sm:w-1/2 hover:cursor-pointer flex justify-center font-bold text-xl mt-3 text-white px-2 py-3 rounded-full hover:bg-green-500">
+                        <button onClick={handleAcceptCall} className="bg-green-400 w-full sm:w-1/2 hover:cursor-pointer flex justify-center font-bold text-xl mt-3 text-white px-2 py-3 rounded-full hover:bg-green-500">
                             ACCEPT
                         </button>
                     </div>
@@ -226,7 +297,7 @@ const RoomPage = () => {
                             <TbCameraSelfie onClick={() => setShowSelf((p) => !p)} className={` ${showSelf ? 'bg-gray-900':'bg-black'} text-white hover:cursor-pointer p-2 rounded-full w-9 h-9 flex-shrink-0`} /> 
                             <img onClick={toggleCamera} className={`${showCamera ? 'bg-black':'bg-red-500'} hover:cursor-pointer p-2 rounded-full w-9 h-9`} src="/images/camera.png" alt="" />
                             <img onClick={toggleAudio} className={`${showAudio ? 'bg-black':'bg-red-500'} hover:cursor-pointer p-2 rounded-full w-9 h-9`} src="/images/mic.png" alt="" />
-                            <button onClick={handleScreenShare} className={`${screenStream ? 'bg-black':'bg-blue-500'} hover:cursor-pointer px-4 py-2 rounded-full text-white font-semibold text-sm`}>Share Screen</button>
+                            <button onClick={toggleScreenShare} className={`${!showScreenShare ? 'bg-black':'bg-blue-500'} hover:cursor-pointer px-4 py-2 rounded-full text-white font-semibold text-sm`}>Share Screen</button>
                             <img className=" bg-red-500 hover:cursor-pointer hover:bg-red-600 p-2 rounded-full w-9 h-9 " src="/images/phone.png" alt="" />
                         </div>
                     </div>
@@ -271,6 +342,7 @@ const RoomPage = () => {
                 <TbCameraSelfie onClick={() => setShowSelf((p) => !p)} className={` ${showSelf ? 'bg-gray-900':'bg-black'} text-white hover:cursor-pointer p-2 rounded-full w-9 h-9`} /> 
                 <img onClick={toggleCamera} className={`${showCamera ? 'bg-black':'bg-red-500'} hover:cursor-pointer p-2 rounded-full w-9 h-9`} src="/images/camera.png" alt="" />
                 <img onClick={toggleAudio} className={`${showAudio ? 'bg-black':'bg-red-500'} hover:cursor-pointer p-2 rounded-full w-9 h-9`} src="/images/mic.png" alt="" />
+                <button onClick={toggleScreenShare} className={`${!showScreenShare ? 'bg-black':'bg-blue-500'} hover:cursor-pointer px-4 py-2 rounded-full text-white font-semibold text-sm`}>Share Screen</button>
                 <img className=" bg-red-500 hover:cursor-pointer p-2 rounded-full w-9 h-9 " src="/images/phone.png" alt="" />
             </div>
         </div>
